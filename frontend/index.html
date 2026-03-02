@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Project Tracker - Prototype</title>
+    <style>
+      body{font-family:system-ui,Segoe UI,Arial;margin:24px}
+      .project{border:1px solid #ddd;padding:8px;margin:8px 0}
+    </style>
+  </head>
+  <body>
+    <h1>Project Tracker (prototype)</h1>
+
+    <section>
+      <h2>Account</h2>
+      <input id="auth-user" placeholder="Username" />
+      <input id="auth-pass" placeholder="Password" type="password" />
+      <button id="register">Register</button>
+      <button id="login">Login</button>
+      <div id="auth-status"></div>
+    </section>
+
+    <section>
+      <h2>Create project</h2>
+      <input id="proj-name" placeholder="Name" />
+      <input id="proj-desc" placeholder="Description" />
+      <button id="create-proj">Create</button>
+    </section>
+
+    <section>
+      <h2>Projects</h2>
+      <div id="projects"></div>
+    </section>
+
+    <script>
+      const API = 'http://localhost:8000'
+      let API_TOKEN = localStorage.getItem('pt_token') || null
+
+      function updateAuthUI(){
+        const status = document.getElementById('auth-status')
+        if(API_TOKEN){
+          status.textContent = 'Logged in'
+        } else {
+          status.textContent = 'Not logged in'
+        }
+      }
+
+      function authHeaders(){
+        const h = {'Content-Type':'application/json'}
+        if(API_TOKEN) h['Authorization'] = 'Bearer ' + API_TOKEN
+        return h
+      }
+
+      async function fetchProjects(){
+        const res = await fetch(API + '/projects/', {headers: authHeaders()})
+        if(res.status === 401){
+          API_TOKEN = null
+          localStorage.removeItem('pt_token')
+          updateAuthUI()
+          return
+        }
+        const projects = await res.json()
+        const container = document.getElementById('projects')
+        container.innerHTML = ''
+        projects.forEach(p => {
+          const el = document.createElement('div')
+          el.className = 'project'
+          el.innerHTML = `<strong>${p.name}</strong><div>${p.description||''}</div><div id='tasks-${p.id}'></div><input id='task-${p.id}' placeholder='New task'/> <button onclick='addTask(${p.id})'>Add</button>`
+          container.appendChild(el)
+          fetchTasks(p.id)
+        })
+      }
+
+      async function createProject(){
+        const name = document.getElementById('proj-name').value
+        const desc = document.getElementById('proj-desc').value
+        const res = await fetch(API + '/projects/', {
+          method: 'POST',
+          headers: authHeaders(),
+          body: JSON.stringify({name, description: desc})
+        })
+        if(res.status === 401) return alert('Unauthorized — please login')
+        document.getElementById('proj-name').value=''
+        document.getElementById('proj-desc').value=''
+        fetchProjects()
+      }
+
+      async function fetchTasks(projectId){
+        const res = await fetch(API + `/projects/${projectId}/tasks/`, {headers: authHeaders()})
+        if(res.status === 401) return
+        const tasks = await res.json()
+        const el = document.getElementById('tasks-' + projectId)
+        el.innerHTML = tasks.map(t => `<div>${t.title} ${t.done? '✓':''}</div>`).join('')
+      }
+
+      function logout(){
+        API_TOKEN = null
+        localStorage.removeItem('pt_token')
+        updateAuthUI()
+      }
+
+      // wire logout (add button)
+      const logoutBtn = document.createElement('button')
+      logoutBtn.textContent = 'Logout'
+      logoutBtn.addEventListener('click', logout)
+      document.getElementById('auth-status').appendChild(logoutBtn)
+
+      async function addTask(projectId){
+        const input = document.getElementById('task-' + projectId)
+        const title = input.value
+        if(!title) return
+        const res = await fetch(API + `/projects/${projectId}/tasks/`, {
+          method:'POST',
+          headers: authHeaders(),
+          body: JSON.stringify({project_id: projectId, title})
+        })
+        if(res.status === 401) return alert('Unauthorized — please login')
+        input.value=''
+        fetchTasks(projectId)
+      }
+
+      // Auth flows
+      async function registerUser(){
+        const u = document.getElementById('auth-user').value
+        const p = document.getElementById('auth-pass').value
+        if(!u||!p) return alert('Provide username and password')
+        // register endpoint accepts query params
+        const res = await fetch(API + `/register?username=${encodeURIComponent(u)}&password=${encodeURIComponent(p)}`, {method: 'POST'})
+        if(res.ok) alert('Registered — now login')
+        else alert('Registration failed')
+      }
+
+      async function loginUser(){
+        const u = document.getElementById('auth-user').value
+        const p = document.getElementById('auth-pass').value
+        if(!u||!p) return alert('Provide username and password')
+        const form = new URLSearchParams()
+        form.append('username', u)
+        form.append('password', p)
+        const res = await fetch(API + '/token', {method: 'POST', headers: {'Content-Type':'application/x-www-form-urlencoded'}, body: form})
+        if(!res.ok) return alert('Login failed')
+        const data = await res.json()
+        API_TOKEN = data.access_token
+        localStorage.setItem('pt_token', API_TOKEN)
+        updateAuthUI()
+      }
+
+      document.getElementById('register').addEventListener('click', registerUser)
+      document.getElementById('login').addEventListener('click', loginUser)
+
+      document.getElementById('create-proj').addEventListener('click', createProject)
+      fetchProjects()
+
+      // WebSocket real-time updates
+      function wsUrl(){
+        const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
+        return `${proto}//${location.hostname}:8000/ws`
+      }
+
+      let ws
+      try{
+        ws = new WebSocket(wsUrl())
+        ws.onmessage = (e) => {
+          try{
+            const msg = JSON.parse(e.data)
+            if(msg.type === 'project_created'){
+              fetchProjects()
+            } else if(msg.type === 'task_created'){
+              const t = msg.task
+              if(t && t.project_id) fetchTasks(t.project_id)
+            }
+          }catch(err){
+            console.error('ws parse', err)
+          }
+        }
+        ws.onopen = () => console.info('ws connected')
+        ws.onclose = () => console.info('ws closed')
+      }catch(err){
+        console.warn('WebSocket not available', err)
+      }
+    </script>
+  </body>
+</html>
