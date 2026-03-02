@@ -34,7 +34,8 @@
     </section>
 
     <script>
-      const API = 'http://localhost:8000'
+      // Use relative API paths so frontend can be served from same origin as backend
+      const API = ''
       let API_TOKEN = localStorage.getItem('pt_token') || null
 
       function updateAuthUI(){
@@ -155,7 +156,7 @@
       // WebSocket real-time updates
       function wsUrl(){
         const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
-        return `${proto}//${location.hostname}:8000/ws`
+        return `${proto}//${location.host}/ws`
       }
 
       let ws

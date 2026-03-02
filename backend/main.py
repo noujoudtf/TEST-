@@ -9,6 +9,7 @@ import hashlib
 from passlib.context import CryptContext
 from sqlmodel import SQLModel, Field, create_engine, Session, select
 import json
+from fastapi.staticfiles import StaticFiles
 
 
 class ConnectionManager:
@@ -147,6 +148,13 @@ app.add_middleware(
 @app.on_event("startup")
 def on_startup():
     SQLModel.metadata.create_all(engine)
+
+# Serve static frontend
+try:
+    app.mount("/", StaticFiles(directory="../frontend", html=True), name="frontend")
+except Exception:
+    # ignore if directory not present in some environments
+    pass
 
 
 @app.get("/", tags=["root"])

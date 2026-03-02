@@ -1,19 +1,14 @@
 version: '3.8'
 services:
   backend:
-    build: ./backend
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
     env_file:
       - .env
     ports:
       - '8000:8000'
-    volumes:
-      - ./backend:/app
     environment:
       - PYTHONUNBUFFERED=1
 
-  frontend:
-    build: ./frontend
-    ports:
-      - '5500:80'
-    volumes:
-      - ./frontend:/usr/share/nginx/html:ro
+  # frontend is served by backend StaticFiles; remove separate frontend service
