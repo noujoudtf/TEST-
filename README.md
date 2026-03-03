@@ -1,3 +1,4 @@
+import os
 # APP-test
 Just testing 
 cd /Users/noujoudtouffah/VSC
